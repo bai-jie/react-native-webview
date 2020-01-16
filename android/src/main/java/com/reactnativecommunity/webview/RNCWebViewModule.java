@@ -42,6 +42,7 @@ public class RNCWebViewModule extends ReactContextBaseJavaModule implements Acti
   private static final int PICKER = 1;
   private static final int PICKER_LEGACY = 3;
   private static final int FILE_DOWNLOAD_PERMISSION_REQUEST = 1;
+  private static final int CAMERA_PERMISSION_REQUEST = 2;
   static final int LOCATION_PERMISSION_REQUEST = 3;
   final String DEFAULT_MIME_TYPES = "*/*";
   private ValueCallback<Uri> filePathCallbackLegacy;
@@ -178,17 +179,31 @@ public class RNCWebViewModule extends ReactContextBaseJavaModule implements Acti
   }
 
   @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-  public boolean startPhotoPickerIntent(final ValueCallback<Uri[]> callback, final Intent intent, final String[] acceptTypes, final boolean allowMultiple) {
+  boolean showFileChoose(final ValueCallback<Uri[]> callback, final Intent intent, final String[] acceptTypes, final boolean allowMultiple) {
+    Runnable afterRequestNeedfulPermission = () -> startPhotoPickerIntent(callback, intent, acceptTypes, allowMultiple);
+    if (!needsRequestCameraRuntimePermission(acceptTypes)) {
+      afterRequestNeedfulPermission.run();
+    } else {
+      requestPermissions(
+        new String[]{Manifest.permission.CAMERA},
+        CAMERA_PERMISSION_REQUEST,
+        isAllGranted -> afterRequestNeedfulPermission.run()
+      );
+    }
+    return true;
+  }
+
+  @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+  private void startPhotoPickerIntent(final ValueCallback<Uri[]> callback, final Intent intent, final String[] acceptTypes, final boolean allowMultiple) {
     filePathCallback = callback;
 
     ArrayList<Parcelable> extraIntents = new ArrayList<>();
-    if (! needsCameraPermission()) {
-      if (acceptsImages(acceptTypes)) {
-        extraIntents.add(getPhotoIntent());
-      }
-      if (acceptsVideo(acceptTypes)) {
-        extraIntents.add(getVideoIntent());
-      }
+    boolean needsRequestCameraRuntimePermission = needsRequestCameraRuntimePermission(acceptTypes);
+    if (acceptsImages(acceptTypes) && !needsRequestCameraRuntimePermission) {
+      extraIntents.add(getPhotoIntent());
+    }
+    if (acceptsVideo(acceptTypes) && !needsRequestCameraRuntimePermission) {
+      extraIntents.add(getVideoIntent());
     }
 
     Intent fileSelectionIntent = getFileChooserIntent(acceptTypes, allowMultiple);
@@ -202,8 +217,6 @@ public class RNCWebViewModule extends ReactContextBaseJavaModule implements Acti
     } else {
       Log.w("RNCWebViewModule", "there is no Activity to handle this Intent");
     }
-
-    return true;
   }
 
   public void setDownloadRequest(DownloadManager.Request request) {
@@ -237,7 +250,13 @@ public class RNCWebViewModule extends ReactContextBaseJavaModule implements Acti
     return result;
   }
 
-  protected boolean needsCameraPermission() {
+  protected boolean needsRequestCameraRuntimePermission(final String[] acceptTypes) {
+    if (!acceptsImages(acceptTypes) && !acceptsImages(acceptTypes)) {
+      return false;
+    }
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+      return false;
+    }
     boolean needed = false;
 
     PackageManager packageManager = getCurrentActivity().getPackageManager();
