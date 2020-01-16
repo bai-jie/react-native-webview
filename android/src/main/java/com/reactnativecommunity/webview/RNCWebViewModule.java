@@ -36,12 +36,17 @@ import java.util.Arrays;
 
 import static android.app.Activity.RESULT_OK;
 
+interface CameraPermissionListener {
+  void onRequestPermissionsResult(boolean grantResults);
+}
+
 @ReactModule(name = RNCWebViewModule.MODULE_NAME)
 public class RNCWebViewModule extends ReactContextBaseJavaModule implements ActivityEventListener {
   public static final String MODULE_NAME = "RNCWebView";
   private static final int PICKER = 1;
   private static final int PICKER_LEGACY = 3;
   private static final int FILE_DOWNLOAD_PERMISSION_REQUEST = 1;
+  private static final int CAMERA_PERMISSION_REQUEST = 2;
   static final int LOCATION_PERMISSION_REQUEST = 3;
   final String DEFAULT_MIME_TYPES = "*/*";
   private ValueCallback<Uri> filePathCallbackLegacy;
@@ -178,7 +183,18 @@ public class RNCWebViewModule extends ReactContextBaseJavaModule implements Acti
   }
 
   @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-  public boolean startPhotoPickerIntent(final ValueCallback<Uri[]> callback, final Intent intent, final String[] acceptTypes, final boolean allowMultiple) {
+  public boolean showFileChoose(final ValueCallback<Uri[]> callback, final Intent intent, final String[] acceptTypes, final boolean allowMultiple) {
+    grantCameraPermissions(grantResults -> {
+      if (!grantResults) {
+        Toast.makeText(getCurrentActivity().getApplicationContext(), "Some capture manners may not work as camera permission was denied.", Toast.LENGTH_LONG).show();
+      }
+      startPhotoPickerIntent(callback, intent, acceptTypes, allowMultiple);
+    });
+    return true;
+  }
+
+  @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+  private void startPhotoPickerIntent(final ValueCallback<Uri[]> callback, final Intent intent, final String[] acceptTypes, final boolean allowMultiple) {
     filePathCallback = callback;
 
     ArrayList<Parcelable> extraIntents = new ArrayList<>();
@@ -202,8 +218,6 @@ public class RNCWebViewModule extends ReactContextBaseJavaModule implements Acti
     } else {
       Log.w("RNCWebViewModule", "there is no Activity to handle this Intent");
     }
-
-    return true;
   }
 
   public void setDownloadRequest(DownloadManager.Request request) {
@@ -252,6 +266,30 @@ public class RNCWebViewModule extends ReactContextBaseJavaModule implements Acti
     }
 
     return needed;
+  }
+
+  private void grantCameraPermissions(CameraPermissionListener listener) {
+    boolean result = true;
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      if (ContextCompat.checkSelfPermission(getCurrentActivity(), Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+        result = false;
+      }
+    }
+
+    if (result) {
+      listener.onRequestPermissionsResult(true);
+    } else {
+      PermissionAwareActivity activity = getPermissionAwareActivity();
+      PermissionListener permissionListener = (requestCode, permissions, grantResults) -> {
+        if (requestCode != CAMERA_PERMISSION_REQUEST) {
+          return false;
+        }
+        // If request is cancelled, the result arrays are empty.
+        listener.onRequestPermissionsResult(grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED);
+        return true;
+      };
+      activity.requestPermissions(new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_REQUEST, permissionListener);
+    }
   }
 
   private Intent getPhotoIntent() {
