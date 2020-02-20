@@ -42,6 +42,7 @@ public class RNCWebViewModule extends ReactContextBaseJavaModule implements Acti
   private static final int PICKER = 1;
   private static final int PICKER_LEGACY = 3;
   private static final int FILE_DOWNLOAD_PERMISSION_REQUEST = 1;
+  static final int LOCATION_PERMISSION_REQUEST = 3;
   final String DEFAULT_MIME_TYPES = "*/*";
   private ValueCallback<Uri> filePathCallbackLegacy;
   private ValueCallback<Uri[]> filePathCallback;
@@ -416,4 +417,58 @@ public class RNCWebViewModule extends ReactContextBaseJavaModule implements Acti
     }
     return (PermissionAwareActivity) activity;
   }
+
+  void requestPermissions(String[] requestedPermissions, int requestCode, GrantPermissionsListener listener) {
+    boolean isAlreadyAllGranted = true;
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      for (String permission : requestedPermissions) {
+        if (ContextCompat.checkSelfPermission(getCurrentActivity(), permission) != PackageManager.PERMISSION_GRANTED) {
+          isAlreadyAllGranted = false;
+          break;
+        }
+      }
+    }
+
+    if (isAlreadyAllGranted) {
+      listener.onRequestPermissionsResult(true);
+    } else {
+      PermissionAwareActivity activity = getPermissionAwareActivity();
+      PermissionListener permissionListener = (resultRequestCode, resultPermissions, grantResults) -> {
+        if (resultRequestCode != requestCode) {
+          return false;
+        }
+        boolean isAllGranted = true;
+        // check resultPermissions contains all requested permissions
+        if (!Arrays.asList(resultPermissions).containsAll(Arrays.asList(requestedPermissions))) {
+          isAllGranted = false;
+        }
+        // check grant result of requested permissions
+        if (isAllGranted) {
+          for (String permission : requestedPermissions) {
+            // find index in resultPermissions
+            int indexInResultPermissions = -1;
+            for (int i = 0; i < resultPermissions.length; i++) {
+              if (resultPermissions[i].equals(permission)) {
+                indexInResultPermissions = i;
+                break;
+              }
+            }
+            // check grant result
+            if (indexInResultPermissions < 0 || grantResults[indexInResultPermissions] != PackageManager.PERMISSION_GRANTED) {
+              isAllGranted = false;
+              break;
+            }
+          }
+        }
+        listener.onRequestPermissionsResult(isAllGranted);
+        return true;
+      };
+      activity.requestPermissions(requestedPermissions, requestCode, permissionListener);
+    }
+  }
+
+}
+
+interface GrantPermissionsListener {
+  void onRequestPermissionsResult(boolean isAllGranted);
 }

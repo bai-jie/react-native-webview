@@ -922,7 +922,11 @@ public class RNCWebViewManager extends SimpleViewManager<WebView> {
 
     @Override
     public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-      callback.invoke(origin, true, false);
+      getModule(mReactContext).requestPermissions(
+        new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+        RNCWebViewModule.LOCATION_PERMISSION_REQUEST,
+        isAllGranted -> callback.invoke(origin, isAllGranted, false)
+      );
     }
 
     protected void openFileChooser(ValueCallback<Uri> filePathCallback, String acceptType) {
